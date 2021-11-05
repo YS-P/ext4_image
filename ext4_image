@@ -1,0 +1,81 @@
+zip_file = open('ext4_실습이미지_1.001', 'rb+')
+
+for i in range (0x2500):
+    zip_file.seek(i*2)
+    r = list(zip_file.read(2))            
+    r.reverse()
+    for j in range(len(r)):                
+        r[j] = "{:02x}".format(r[j])
+    r = '0x' + ''.join(r)                  
+    if r == '0xef53':                  
+        super_block_magic_offset=i*2
+        break
+    
+
+super_block_start = super_block_magic_offset - 0x38
+
+block_size_offset = [super_block_start + 0x18, super_block_start + 0x19,super_block_start + 0x1A,super_block_start + 0x1B]
+zip_file.seek(block_size_offset[0])
+block_size = list(zip_file.read(4))
+block_size.reverse()
+block_size_ = int("".join(hex(x)[2:] for x in block_size), 16 )
+block_size_ = int(block_size_)
+block_size = 2 **(10+ block_size_)
+
+group_descriptor_offset = int(super_block_start + ((block_size/4) * 3))
+inode_table = [group_descriptor_offset + 0x08,group_descriptor_offset + 0x09,group_descriptor_offset +0x10,group_descriptor_offset + 0x11]
+zip_file.seek(inode_table[0])
+inode_table_ = list(zip_file.read(4))
+inode_table_.reverse()
+inode_table_offset = int("".join(hex(x)[2:] for x in inode_table_), 16)
+inode_table_offset = int(inode_table_offset)
+inode_table_offset = inode_table_offset * block_size + 256 * block_size
+
+zip_file.seek(inode_table_offset)
+for i in range(int(block_size/2)):
+    r = list(zip_file.read(2))
+    r.reverse()             
+    for j in range(len(r)):                
+        r[j] = "{:02x}".format(r[j])
+    r = '0x' + ''.join(r)              
+    if r == '0xf30a':                  
+        magic_number_offset=i*2 + inode_table_offset
+        break
+
+ei_block_offset = magic_number_offset + 0x14
+zip_file.seek(ei_block_offset)
+ei_block = list(zip_file.read(4))
+ei_block.reverse()
+ei_block = int("".join(hex(x)[2:] for x in ei_block), 16)
+data_offset = ei_block*block_size + 256 * block_size
+
+
+file_start = data_offset + 0x18
+while True:
+    zip_file.seek(file_start + 0x06)
+    name_len = list(zip_file.read(1))
+    name_len = int("".join(hex(x)[2:] for x in name_len), 16)
+
+    if(name_len == 0) : 
+        break
+
+    file_name_offset = file_start + 0x08
+    zip_file.seek(file_name_offset)
+    file_name = list(zip_file.read(name_len))
+    file_name = "".join(hex(x)[2:] for x in file_name)
+
+    file_name_bytes = bytes.fromhex(file_name)
+    file_name_ascii = file_name_bytes.decode("ASCII")
+    print(file_name_ascii)
+    
+    file_start = file_name_offset + name_len
+    zip_file.seek(file_start)
+    while True : 
+        r = list(zip_file.read(1))
+        r = int("".join(hex(x)[2:] for x in r), 16)
+        if (r != 0 | (file_start == data_offset + 256)):
+            break
+        else:
+            file_start = file_start + 0x01
+
+zip_file.close()
